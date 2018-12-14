@@ -11,18 +11,17 @@ import com.microsoft.aad.adal4j.AuthenticationContext;
 import com.microsoft.aad.adal4j.AuthenticationResult;
 import com.microsoft.aad.adal4j.ClientCredential;
 import com.microsoft.aad.adal4j.UserAssertion;
-import com.nimbusds.oauth2.sdk.http.HTTPResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
 
 import javax.naming.ServiceUnavailableException;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +30,9 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public class AzureADGraphClient {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AzureADGraphClient.class);
+
     private static final SimpleGrantedAuthority DEFAULT_AUTHORITY = new SimpleGrantedAuthority("ROLE_USER");
     private static final String DEFAULE_ROLE_PREFIX = "ROLE_";
     private static final String REQUEST_ID_SUFFIX = "aadfeed5";
@@ -49,34 +51,26 @@ public class AzureADGraphClient {
     }
 
     private String getUserMembershipsV1(String accessToken) throws IOException {
-        final URL url = new URL(serviceEndpoints.getAadMembershipRestUri());
+        final RestTemplate restTemplate = new RestTemplate();
 
-        final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        // Set the appropriate header fields in the request header.
-        conn.setRequestProperty("api-version", "1.6");
-        conn.setRequestProperty("Authorization", accessToken);
-        conn.setRequestProperty("Accept", "application/json;odata=minimalmetadata");
-        final String responseInJson = getResponseStringFromConn(conn);
-        final int responseCode = conn.getResponseCode();
-        if (responseCode == HTTPResponse.SC_OK) {
-            return responseInJson;
+        final HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.setBearerAuth(accessToken);
+        httpHeaders.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        final HttpEntity httpEntity = new HttpEntity(httpHeaders);
+
+        final ResponseEntity<String> responseEntity = restTemplate
+                .exchange(serviceEndpoints.getAadMembershipRestUri(), HttpMethod.GET, httpEntity, String.class);
+
+        if (!responseEntity.getStatusCode().is2xxSuccessful()) {
+            throw new IllegalStateException(
+                    String.format("Failed to get MemberOf" + "Code - %s, Headers - %s, Body - %s",
+                            responseEntity.getStatusCodeValue(),
+                            responseEntity.getHeaders(), responseEntity.getBody()),
+                    new HttpClientErrorException(responseEntity.getStatusCode()));
         } else {
-            throw new IllegalStateException("Response is not " + HTTPResponse.SC_OK +
-                    ", response json: " + responseInJson);
+            return responseEntity.getBody();
         }
-    }
 
-    private static String getResponseStringFromConn(HttpURLConnection conn) throws IOException {
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            final StringBuilder stringBuffer = new StringBuilder();
-            String line = "";
-            while ((line = reader.readLine()) != null) {
-                stringBuffer.append(line);
-            }
-            return stringBuffer.toString();
-        }
     }
 
     public List<UserGroup> getGroups(String graphApiToken) throws IOException {
@@ -92,8 +86,8 @@ public class AzureADGraphClient {
 
         if (valuesNode != null) {
             valuesNode.forEach(valueNode -> {
-                if (valueNode != null && valueNode.get("objectType").asText().equals("Group")) {
-                    final String objectID = valueNode.get("objectId").asText();
+                if (valueNode != null && valueNode.get("@odata.type").asText().equals("#microsoft.graph.group")) {
+                    final String objectID = valueNode.get("id").asText();
                     final String displayName = valueNode.get("displayName").asText();
                     lUserGroups.add(new UserGroup(objectID, displayName));
                 }

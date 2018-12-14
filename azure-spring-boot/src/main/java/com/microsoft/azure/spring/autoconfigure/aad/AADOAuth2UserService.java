@@ -45,9 +45,7 @@ public class AADOAuth2UserService implements OAuth2UserService<OidcUserRequest, 
 
         // Delegate to the default implementation for loading a user
         OidcUser oidcUser = delegate.loadUser(userRequest);
-        final OidcIdToken idToken = userRequest.getIdToken();
 
-        final String graphApiToken;
         final Set<GrantedAuthority> mappedAuthorities;
 
         try {
@@ -60,14 +58,10 @@ public class AADOAuth2UserService implements OAuth2UserService<OidcUserRequest, 
             final AzureADGraphClient graphClient =
                     new AzureADGraphClient(credential, aadAuthProps, serviceEndpointsProps);
 
-            graphApiToken = graphClient.acquireTokenForGraphApi(idToken.getTokenValue(),
-                    aadAuthProps.getTenantId()).getAccessToken();
-
-            mappedAuthorities = graphClient.getGrantedAuthorities(graphApiToken);
+            mappedAuthorities = graphClient.getGrantedAuthorities
+                    (userRequest.getAccessToken().getTokenValue());
         } catch (MalformedURLException e) {
             throw wrapException(INVALID_REQUEST, "Failed to acquire token for Graph API.", null, e);
-        } catch (ServiceUnavailableException | InterruptedException | ExecutionException e) {
-            throw wrapException(SERVER_ERROR, "Failed to acquire token for Graph API.", null, e);
         } catch (IOException e) {
             throw wrapException(SERVER_ERROR, "Failed to map group to authorities.", null, e);
         }
