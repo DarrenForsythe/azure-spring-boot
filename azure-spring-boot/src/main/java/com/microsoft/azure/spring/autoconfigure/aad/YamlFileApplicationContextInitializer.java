@@ -10,6 +10,7 @@ import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.Resource;
+import org.springframework.web.context.ConfigurableWebApplicationContext;
 
 import java.io.IOException;
 import java.util.List;
@@ -21,11 +22,11 @@ import java.util.List;
  * In order to avoid possible overwritten by users' default yaml configuration file.
  */
 public class YamlFileApplicationContextInitializer
-        implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+        implements ApplicationContextInitializer<ConfigurableWebApplicationContext> {
 
     private static final String SERVICE_ENDPOINTS_YAML = "classpath:serviceEndpoints.yml";
 
-    private List<PropertySource<?>> yamlPropertySourceLoad(ConfigurableApplicationContext context) {
+    private List<PropertySource<?>> yamlPropertySourceLoad(ConfigurableWebApplicationContext context) {
         final List<PropertySource<?>> serviceEndpoints;
         final Resource resource = context.getResource(SERVICE_ENDPOINTS_YAML);
         final YamlPropertySourceLoader sourceLoader = new YamlPropertySourceLoader();
@@ -44,7 +45,7 @@ public class YamlFileApplicationContextInitializer
     }
 
     @Override
-    public void initialize(ConfigurableApplicationContext applicationContext) {
+    public void initialize(ConfigurableWebApplicationContext applicationContext) {
         final List<PropertySource<?>> serviceEndpoints = yamlPropertySourceLoad(applicationContext);
 
         applicationContext.getEnvironment().getPropertySources().addFirst(serviceEndpoints.get(0));
